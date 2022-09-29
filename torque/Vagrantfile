@@ -1,0 +1,30 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+Vagrant.configure(2) do |config|
+
+  config.ssh.forward_agent = true
+
+  config.vm.provider :virtualbox do |v|
+    v.customize ["modifyvm", :id, "--memory", 1024]
+  end
+  config.vm.provider :vmware_workstation do |v|
+    v.vmx['memsize'] = '1024'
+  end
+
+  config.vm.box_download_insecure = true
+
+  config.vm.synced_folder 'puppet', '/vagrant', mount_options: ['dmode=755', 'fmode=755']
+
+  if Vagrant.has_plugin?('vagrant-hostmanager')
+    config.hostmanager.manage_host = true
+    config.hostmanager.enabled = true
+    config.hostmanager.manage_host = true
+    config.hostmanager.ignore_private_ip = false
+    config.hostmanager.include_offline = true
+    config.hostmanager.manage_guest = false
+  else
+    abort 'Please install the hostmanager plugin with "vagrant plugin install vagrant-hostmanager"'
+  end
+
+end
