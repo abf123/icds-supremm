@@ -50,6 +50,11 @@
       shell: /usr/local/bin/qmgr </vagrant/pbs_server.qmgr
       args:
         creates: "{{ torque_home }}/server_priv/queues/batch"
+    - name: Create pbs_sched log directory
+      file:
+        path: /var/spool/torque/sched_logs
+        state: directory
+        mode: '0755'
     - name: Place systemd service file for pbs_sched
       copy:
         src: src/pbs_sched.service
