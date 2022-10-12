@@ -25,7 +25,6 @@ set server down_on_error = True
 set server mom_job_sync = True
 set server keep_completed = 300
 set server auto_node_np = True
-set server next_job_number = 5
 set server moab_array_compatible = True
 set server nppcu = 1
 set server timeout_for_job_delete = 120
@@ -35,5 +34,5 @@ set server note_append_on_error = True
 # Create node
 #
 create node comp7.icds.test
-create node comp1.icds.test
-create node comp2.icds.test
+#create node comp1.icds.test
+#create node comp2.icds.test
