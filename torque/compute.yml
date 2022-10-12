@@ -30,6 +30,13 @@
         owner: root
         group: root
         mode: '0644'
+    - name: Place pbs_mom config
+      copy:
+        src: src/pbs_mom.config
+        dest: "{{ torque_home }}/mom_priv/config"
+        owner: root
+        group: root
+        mode: '0644'
     - name: Enable trqauthd service
       systemd:
         name: trqauthd
