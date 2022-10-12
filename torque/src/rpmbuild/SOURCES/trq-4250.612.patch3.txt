@@ -1,0 +1,156 @@
+diff --git a/src/server/req_stat.c b/src/server/req_stat.c
+index 21a608a..011b992 100644
+--- a/src/server/req_stat.c
++++ b/src/server/req_stat.c
+@@ -144,6 +144,7 @@ extern pthread_mutex_t *netrates_mutex;
+ 
+ int status_job(job *, struct batch_request *, svrattrl *, tlist_head *, bool, int *);
+ int status_attrib(svrattrl *, attribute_def *, pbs_attribute *, int, int, tlist_head *, bool, int *, int);
++char *netaddr_long(long, char*);
+ extern int  status_nodeattrib(svrattrl *, attribute_def *, struct pbsnode *, int, int, tlist_head *, int*);
+ extern void rel_resc(job*);
+ 
+@@ -741,6 +742,7 @@ int stat_to_mom(
+   unsigned short  job_momport = -1;
+   char           *job_momname = NULL;
+   job            *pjob = NULL;
++  char            pre_log_buf[LOCAL_LOG_BUF_SIZE];
+ 
+   if ((pjob = svr_find_job(job_id, FALSE)) == NULL)
+     return(PBSE_JOBNOTFOUND);
+@@ -790,10 +792,10 @@ int stat_to_mom(
+   addr = job_momaddr;
+ 
+   node = tfind_addr(addr,job_momport,job_momname);
+-  free(job_momname);
+ 
+   if (node == NULL)
+     {
++    free(job_momname);
+     return PBSE_UNKNODE;
+     }
+ 
+@@ -810,9 +812,31 @@ int stat_to_mom(
+ 
+     node->unlock_node(__func__, "no rely mom", LOGLEVEL);
+ 
++    free(job_momname);
+     return PBSE_NORELYMOM;
+     }
+ 
++  // TRQ-4250 - make sure correct MS being contacted
++  {
++  char ipstr1[strlen("255.255.255.255")+1];
++  char ipstr2[strlen("255.255.255.255")+1];
++
++  snprintf(pre_log_buf, sizeof(pre_log_buf),
++    "pre stat_update() info: job_id=%s, addr=%lu(%s), job_momaddr=%lu(%s), job_momport=%d, job_momname=%s, node->get_name()=%s",
++    job_id,
++    addr,
++    netaddr_long(addr, ipstr1),
++    job_momaddr,
++    netaddr_long(job_momaddr, ipstr2),
++    job_momport,
++    job_momname,
++    node->get_name());
++  // log node->nd_addrs[]??
++  //log_record(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, __func__, log_buf);
++  }
++
++  free(job_momname);
++
+   /* get connection to MOM */
+   node->unlock_node(__func__, "before svr_connect", LOGLEVEL);
+   handle = svr_connect(job_momaddr, job_momport, &rc, NULL, NULL);
+@@ -821,7 +845,11 @@ int stat_to_mom(
+     {
+     if ((rc = issue_Drequest(handle, &newrq, true)) == PBSE_NONE)
+       {
+-      stat_update(&newrq, cntl);
++      if (stat_update(&newrq, cntl) == PBSE_JOBNOTFOUND)
++        {
++        // contacted mom no longer recognized job so log info
++        log_record(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, __func__, pre_log_buf);
++        }
+       }
+     }
+   else
+@@ -841,7 +869,7 @@ int stat_to_mom(
+  * stat_update - take reply to status request from MOM and update job status
+  */
+ 
+-void stat_update(
++int stat_update(
+     
+   batch_request    *preq,
+   struct stat_cntl *cntl)
+@@ -856,6 +884,7 @@ void stat_update(
+   time_t                time_now = time(NULL);
+   char                 *msg_ptr = NULL;
+   char                  log_buf[LOCAL_LOG_BUF_SIZE];
++  int                   rc = PBSE_NONE;
+ 
+   preply = &preq->rq_reply;
+ 
+@@ -939,15 +968,38 @@ void stat_update(
+         }
+       else
+         {
++#if 1
++        // TRQ-4250 - prevent server from aborting job
++
++        snprintf(log_buf, sizeof(log_buf),
++          "mother superior no longer recognizes %s as a valid job (skipping abort). Last reported time was %ld",
++          preq->rq_ind.rq_status.rq_id, pjob->ji_last_reported_time);
++        log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, __func__, log_buf);
++
++        // log more info about the situation
++        char ipstr[strlen("255.255.255.255")+1];
++
++        snprintf(log_buf, sizeof(log_buf),
++          "ji_jobid=%s, ji_momaddr=%lu(%s), ji_momport=%d, exec_host=%s, rq_host=%s",
++          pjob->ji_qs.ji_jobid,
++          pjob->ji_qs.ji_un.ji_exect.ji_momaddr,
++          netaddr_long(pjob->ji_qs.ji_un.ji_exect.ji_momaddr, ipstr),
++          pjob->ji_qs.ji_un.ji_exect.ji_momport,
++          pjob->ji_wattr[JOB_ATR_exec_host].at_val.at_str,
++          preq->rq_host);
++        log_record(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, __func__, log_buf);
++        rc = PBSE_JOBNOTFOUND;
++#else
+         snprintf(log_buf, sizeof(log_buf),
+           "mother superior no longer recognizes %s as a valid job, aborting. Last reported time was %ld",
+           preq->rq_ind.rq_status.rq_id, pjob->ji_last_reported_time);
+         log_event(PBSEVENT_JOB, PBS_EVENTCLASS_JOB, __func__, log_buf);
+-        
++
+         svr_setjobstate(pjob, JOB_STATE_QUEUED, JOB_SUBSTATE_ABORT, FALSE);
+         rel_resc(pjob);
+         job_mutex.set_unlock_on_exit(false);
+         job_abt(&pjob, "Job does not exist on node");
++#endif
+ 
+         /* TODO, if the job is rerunnable we should set its state back to queued */
+         }
+@@ -973,7 +1025,7 @@ void stat_update(
+   if (cntl->sc_post)
+     cntl->sc_post(cntl); /* continue where we left off */
+ 
+-  return;
++  return(rc);
+   }  /* END stat_update() */
+ 
+ 
+diff --git a/src/server/req_stat.h b/src/server/req_stat.h
+index 585bc86..ee445b3 100644
+--- a/src/server/req_stat.h
++++ b/src/server/req_stat.h
+@@ -15,7 +15,7 @@ int stat_to_mom(const char *job_id, struct stat_cntl *cntl);
+ 
+ void stat_mom_job(const char *jobid);
+ 
+-void stat_update(struct batch_request *preq, struct stat_cntl *cntl);
++int stat_update(struct batch_request *preq, struct stat_cntl *cntl);
+ 
+ void poll_job_task(struct work_task *ptask);
+ 

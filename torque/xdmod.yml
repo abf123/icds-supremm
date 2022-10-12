@@ -1,0 +1,32 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install epel
+      yum:
+        name: epel-release
+        state: installed
+    - name: Install MongoDB-6.0 yum repo
+      yum_repository:
+        name: mongodb-org-6.0
+        description: MongoDB Repository
+        baseurl: https://repo.mongodb.org/yum/redhat/$releasever/mongodb-org/6.0/x86_64/
+        gpgcheck: true
+        enabled: true
+        gpgkey: https://www.mongodb.org/static/pgp/server-6.0.asc
+    - name: Install MongoDB packages
+      yum:
+        name: mongodb-org
+        state: installed
+    - name: Install XDMoD
+      yum:
+        name: https://github.com/ubccr/xdmod/releases/download/v10.0.0/xdmod-10.0.0-1.0.el7.noarch.rpm
+        state: installed
+    - name: Install XDMoD Supremm
+      yum:
+        name: https://github.com/ubccr/xdmod-supremm/releases/download/v10.0.0/xdmod-supremm-10.0.0-1.0.el7.noarch.rpm
+        state: installed
+    - name: Install Supremm
+      yum:
+        name: https://github.com/ubccr/supremm/releases/download/1.4.1/supremm-1.4.1-1.el7.x86_64.rpm
+        state: installed

@@ -1,0 +1,21 @@
+commit 4d97ca6ea214b13e2c99c6f8d5aeb601265e453d
+Author: David Beer <dbeer@adaptivecomputing.com>
+Date:   Mon May 15 14:42:31 2017 -0600
+
+    TRQ-4036. Add a null check when inspecting an attribute.
+
+diff --git a/src/lib/Libattr/attr_fn_arst.c b/src/lib/Libattr/attr_fn_arst.c
+index 811410f..c632816 100644
+--- a/src/lib/Libattr/attr_fn_arst.c
++++ b/src/lib/Libattr/attr_fn_arst.c
+@@ -1135,7 +1135,9 @@ char *arst_string(
+     return(NULL);
+     }
+ 
+-  if ((pattr->at_type != ATR_TYPE_ARST) || !(pattr->at_flags & ATR_VFLAG_SET))
++  if ((pattr->at_type != ATR_TYPE_ARST) ||
++      !(pattr->at_flags & ATR_VFLAG_SET) ||
++      (pattr->at_val.at_arst == NULL))
+     {
+     /* bad type or value not set */
+ 

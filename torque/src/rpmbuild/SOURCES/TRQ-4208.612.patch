@@ -1,0 +1,15 @@
+diff --git a/src/lib/Libutils/numa_chip.cpp b/src/lib/Libutils/numa_chip.cpp
+index 2e94474..e7f5708 100644
+--- a/src/lib/Libutils/numa_chip.cpp
++++ b/src/lib/Libutils/numa_chip.cpp
+@@ -1429,6 +1429,10 @@ bool Chip::getContiguousCoreVector(
+     {
+     /* Can't get contiguous cores. Just get them where you can find them */
+     // Get the core indices we will use
++
++    // clear any previous results
++    slots.clear();
++
+     size_t core_index = 0;
+     for (int i = 0; i < execution_slots_per_task; i++)
+       {

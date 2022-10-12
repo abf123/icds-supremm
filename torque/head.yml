@@ -1,0 +1,65 @@
+---
+- hosts: all
+  become: yes
+  vars:
+    torque_rpms:
+      - moab-torque-common-6.1.2-7aci.el7.x86_64.rpm
+      - moab-torque-client-6.1.2-7aci.el7.x86_64.rpm
+      - moab-torque-server-6.1.2-7aci.el7.x86_64.rpm
+    rpm_target_dir: /tmp/
+    rpm_source_dir: src/rpmbuild/RPMS/x86_64
+    torque_home: /var/spool/torque
+  tasks:
+    - name: Install EPEL repo
+      yum:
+        name: epel-release
+        state: installed
+    - name: Copy Torque RPMs
+      copy:
+        src: "{{ rpm_source_dir }}/{{ item }}"
+        dest: "{{ rpm_target_dir }}"
+      loop: "{{ torque_rpms }}"
+    - name: Install Torque Server and Clients
+      yum:
+        #name: "/tmp/{{ item }}"
+        name: "{{ [rpm_target_dir] | product(torque_rpms) | map('join') | list }}"
+        state: installed
+      #loop: "{{ torque_rpms }}"
+    - name: Set PBS server name
+      copy:
+        src: src/server_name
+        dest: "{{ torque_home }}/server_name"
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Initialize Torque serverdb
+      shell: /usr/local/sbin/pbs_server -t create -f && pkill pbs_server
+      args:
+        creates: "{{ torque_home }}/server_priv/serverdb"
+    - name: Enable trqauthd service
+      systemd:
+        name: trqauthd
+        state: started
+        enabled: true
+    - name: Enable pbs_server service
+      systemd:
+        name: pbs_server
+        state: started
+        enabled: true
+    - name: Set pbs_server configuration
+      shell: /usr/local/bin/qmgr </vagrant/pbs_server.qmgr
+      args:
+        creates: "{{ torque_home }}/server_priv/queues/batch"
+    - name: Place systemd service file for pbs_sched
+      copy:
+        src: src/pbs_sched.service
+        dest: /usr/lib/systemd/system/pbs_sched.service
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Enable pbs_sched service
+      systemd:
+        name: pbs_sched
+        state: started
+        enabled: true
+        daemon_reload: true

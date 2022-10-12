@@ -1,0 +1,527 @@
+diff --git a/src/server/node_manager.c b/src/server/node_manager.c
+index 35a5860..7fbac8d 100644
+--- a/src/server/node_manager.c
++++ b/src/server/node_manager.c
+@@ -5764,42 +5764,59 @@ struct pbsnode *get_compute_node(
+   } /* END get_compute_node() */
+ 
+ 
++/*
++ * split_str_on_character - split a string on a character into a vector
++ */
++
++std::vector<std::string> split_str_on_character(
++
++  const std::string& s,
++  char  delimiter)
++
++  {
++  std::vector<std::string> tokens;
++  std::string token;
++  std::istringstream tokenStream(s);
++
++  while (std::getline(tokenStream, token, delimiter))
++    {
++    tokens.push_back(token);
++    }
++
++  return(tokens);
++  }
+ 
+ 
+ /*
+- * set_one_old - set a named node as allocated to a job
++ * set_one_old_slotrange - set a named node with slot range as allocated to a job
++ *  slotrange_string expected to be <m>[-<n>]
+  */
+ 
+-int set_one_old(
++int set_one_old_slotrange(
+ 
+-  char *name,
++  const char *name,
++  const char *slotrange_string,
+   job  *pjob)
+ 
+   {
+   int             first;
+   int             last;
+   int             rc = PBSE_NONE;
+-
+-  struct pbsnode *pnode;
+-  char           *pc;
+   char           *dash;
++  struct pbsnode *pnode;
+ 
+-  if ((pc = strchr(name, (int)'/')))
+-    {
+-    first = strtol(pc + 1, &dash, 10);
++  // check params for NULL
++  if ((name == NULL) ||
++      (slotrange_string == NULL) ||
++      (pjob == NULL))
++    return(PBSE_UNKNODE);
+ 
+-    *pc = '\0';
++  first = strtol(slotrange_string, &dash, 10);
+ 
+-    if (*dash == '-')
+-      last = strtol(dash + 1, NULL, 10);
+-    else
+-      last = first;
+-    }
++  if (*dash == '-')
++    last = strtol(dash + 1, NULL, 10);
+   else
+-    {
+-    first = 0;
+     last = first;
+-    }
+ 
+   pnode = find_nodebyname(name);
+ 
+@@ -5870,60 +5887,87 @@ int set_one_old(
+     rc = PBSE_UNKNODE;
+ 
+   return(rc);
+-  }  /* END set_one_old() */
++  }  /* END set_one_old_slotrange() */
+ 
+ 
+ /*
+- * Process gpu token of the form <hostname>-gpu/<first>[-<last>]
+- *
+- * Set gpu subjob information for <hostname> node.
++ * set_one_old - set a named node as allocated to a job
++ *   name expected to have this form: <hostname>/<m>[-<n>][,...]
+  */
+ 
+-int process_gpu_token(
++int set_one_old(
+ 
+-  const char *gpu_token,
++  const char *name,
++  job  *pjob)
++
++  {
++  char *remainder;
++  int   rc = PBSE_UNKNODE;
++  std::vector<std::string> rangestrings;
++
++  // check params
++  if ((name == NULL) ||
++      (pjob == NULL))
++    return(PBSE_UNKNODE);
++
++  // find hostname
++  if ((remainder = strchr((char *)name, '/')) != NULL)
++    {
++    // terminate the string -- the hostname preceeds this
++    *remainder = '\0'; 
++
++    // the remainder of the string
++    remainder++;
++    }
++
++  // see if there's anything left to parse
++  if ((remainder == NULL) || *remainder == '\0')
++    return(PBSE_UNKNODE);
++
++  // get vector of slot ranges
++  rangestrings = split_str_on_character(remainder, ',');
++
++  // process each <m>[-<n>] range
++  for (std::vector<int>::size_type i = 0; i < rangestrings.size(); i++)
++    {
++    if ((rc = set_one_old_slotrange(name, rangestrings[i].c_str(), pjob)) != PBSE_NONE)
++      break;
++    }
++
++  return(rc);
++  }
++
++
++/*
++ * process_gpu_token_slotrange - Set gpu subjob information for <hostname> node.
++ *   slotrange_string expected to have this form: <m>[-<n>]
++ */
++
++int process_gpu_token_slotrange(
++
++  const char *name,
++  const char *slotrange_string,
+   job *pjob)
+ 
+   {
+-  char           *pc;
+   char           *dash;
+-  char           *p;
+   int             first;
+   int             last;
+   struct pbsnode *pnode;
+ 
+-  // gpu_token expected to point to something like "numa3-gpu/2"
+-
+-  if ((gpu_token == NULL) || (pjob == NULL))
++  if ((name == NULL) || (slotrange_string == NULL) || (pjob == NULL))
+     return(-1);
+      
+-  // calculate range indices after the /
+-  if ((pc = strchr((char *)gpu_token, (int)'/')))
+-    {
+-    first = strtol(pc + 1, &dash, 10);
+-
+-    *pc = '\0';
++  // calculate range indices
++  first = strtol(slotrange_string, &dash, 10);
+ 
+-    if (*dash == '-')
+-      last = strtol(dash + 1, NULL, 10);
+-    else
+-      last = first;
+-    }
++  if (*dash == '-')
++    last = strtol(dash + 1, NULL, 10);
+   else
+-    {
+-    first = 0;
+     last = first;
+-    }
+-
+-  // drop -gpu suffix
+-  if ((p = strrchr((char *)gpu_token, (int)'-')) != NULL)
+-    {
+-    if (strcmp(p, "-gpu") == 0)
+-      *p = '\0';
+-    }
+ 
+   // lookup node and set gpu info on each gpu subnode
+-  if ((pnode = find_nodebyname(gpu_token)) != NULL)
++  if ((pnode = find_nodebyname(name)) != NULL)
+     {
+     int i;
+ 
+@@ -5941,6 +5985,63 @@ int process_gpu_token(
+   return(PBSE_NONE);
+   }
+ 
++
++/*
++ * process_gpu_token - Set gpu subjob information for <hostname> node.
++ *   gpu_token expected to have this form: <hostname>[-gpu]/<m>[-<n>][,...]
++ */
++
++int process_gpu_token(
++
++  const char *gpu_token,
++  job  *pjob)
++
++  {
++  char *remainder;
++  char *p;
++  int   rc = PBSE_UNKNODE;
++  std::vector<std::string> rangestrings;
++
++  // check params
++  if ((gpu_token == NULL) ||
++      (pjob == NULL))
++    return(PBSE_UNKNODE);
++
++  // find hostname
++  if ((remainder = strchr((char *)gpu_token, '/')) != NULL)
++    {
++    // terminate the string -- the hostname preceeds this
++    *remainder = '\0'; 
++
++    // the remainder of the string
++    remainder++;
++    }
++
++  // see if there's anything left to parse
++  if ((remainder == NULL) || *remainder == '\0')
++    return(PBSE_UNKNODE);
++
++  // drop -gpu suffix
++  if ((p = strrchr((char *)gpu_token, '-')) != NULL)
++    {
++    if (strcmp(p, "-gpu") == 0)
++      *p = '\0';
++    }
++
++  // get vector or slot ranges
++  rangestrings = split_str_on_character(remainder, ',');
++
++  // process each <m>[-<n>] range
++  for (std::vector<int>::size_type i = 0; i < rangestrings.size(); i++)
++    {
++    if ((rc = process_gpu_token_slotrange(gpu_token, rangestrings[i].c_str(), pjob)) != PBSE_NONE)
++      break;
++    }
++
++  return(rc);
++  }
++
++
+ /*
+  * set_old_nodes - set "old" nodes as in use - called from pbsd_init()
+  * when recovering a job in the running state.
+diff --git a/src/test/node_manager/scaffolding.c b/src/test/node_manager/scaffolding.c
+index f76232a..16d49df 100644
+--- a/src/test/node_manager/scaffolding.c
++++ b/src/test/node_manager/scaffolding.c
+@@ -58,6 +58,7 @@ int              can_place = 0;
+ pbsnode          napali_node;
+ 
+ int create_a_gpusubnode(struct pbsnode*);
++int add_execution_slot(struct pbsnode*);
+ 
+ struct batch_request *alloc_br(int type)
+   {
+@@ -136,6 +137,7 @@ struct pbsnode *find_nodebyname(const char *nodename)
+   static struct pbsnode bob;
+   static struct pbsnode other;
+   static struct pbsnode gpunode;
++  static struct pbsnode jane;
+   static int    called = 0;
+ 
+   if (called == 0)
+@@ -148,6 +150,18 @@ struct pbsnode *find_nodebyname(const char *nodename)
+     create_a_gpusubnode(&gpunode);
+     create_a_gpusubnode(&gpunode);
+     create_a_gpusubnode(&gpunode);
++    create_a_gpusubnode(&gpunode);
++    create_a_gpusubnode(&gpunode);
++
++    jane.change_name("jane");
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
++    add_execution_slot(&jane);
+ 
+     called++;
+     }
+@@ -166,6 +180,8 @@ struct pbsnode *find_nodebyname(const char *nodename)
+     return(&other);
+   else if (!strcmp(nodename, "gpunode"))
+     return(&gpunode);
++  else if (!strcmp(nodename, "jane"))
++    return(&jane);
+   else
+     return(NULL);
+   }
+@@ -518,6 +534,10 @@ int unlock_ji_mutex(job *pjob, const char *id, const char *msg, int logging)
+ int add_execution_slot(struct pbsnode *pnode)
+ 
+   {
++  std::string s = "jane";
++  if (pnode->get_name() == s)
++    pnode->nd_slots.add_execution_slot();
++
+   return(0);
+   }
+ 
+diff --git a/src/test/node_manager/test_uut.c b/src/test/node_manager/test_uut.c
+index 5d224b7..2df3653 100644
+--- a/src/test/node_manager/test_uut.c
++++ b/src/test/node_manager/test_uut.c
+@@ -48,6 +48,10 @@ void check_node_jobs_existence(struct work_task *pwt);
+ int  add_job_to_gpu_subnode(pbsnode *pnode, gpusubn &gn, job *pjob);
+ int proplist(char **str, std::vector<prop> &plist, int *node_req, int *gpu_req, int *mic_req);
+ int process_gpu_token(const char*, job*);
++int process_gpu_token_slotrange(const char*, const char*, job*);
++std::vector<std::string> split_str_on_character(const std::string&, char);
++int set_one_old(const char*, job*);
++int set_one_old_slotrange(const char*, const char*, job*);
+ 
+ 
+ 
+@@ -930,8 +934,8 @@ START_TEST(place_subnodes_in_hostlist_job_exclusive_test)
+   job_reservation_info jri;
+   int rc =  place_subnodes_in_hostlist(&pjob, pnode, *naji, jri, buf);
+ 
+-  fail_unless((rc == PBSE_NONE), "Call to place_subnodes_in_hostlit failed");
+-  fail_unless(pnode->nd_state == INUSE_JOB, "Call to place_subnodes_in_hostlit was not set to job exclusive state");
++  fail_unless((rc == PBSE_NONE), "Call to place_subnodes_in_hostlist failed");
++  fail_unless(pnode->nd_state == INUSE_JOB, "Call to place_subnodes_in_hostlist was not set to job exclusive state");
+ 
+   /* turn job_exclusive_on_use off and reset the node state */
+   server.sv_attr[SRV_ATR_JobExclusiveOnUse].at_flags=ATR_VFLAG_SET;
+@@ -940,8 +944,8 @@ START_TEST(place_subnodes_in_hostlist_job_exclusive_test)
+ 
+   job_reservation_info jri2;
+   rc = place_subnodes_in_hostlist(&pjob, pnode, *naji, jri2, buf);
+-  fail_unless((rc == PBSE_NONE), "2nd call to place_subnodes_in_hostlit failed");
+-  fail_unless(pnode->nd_state != INUSE_JOB, "2nd call to place_subnodes_in_hostlit was not set to job exclusive state");
++  fail_unless((rc == PBSE_NONE), "2nd call to place_subnodes_in_hostlist failed");
++  fail_unless(pnode->nd_state != INUSE_JOB, "2nd call to place_subnodes_in_hostlist was not set to job exclusive state");
+ 
+   /* test case when the attribute SVR_ATR_JobExclusiveOnUse was never set */
+   server.sv_attr[SRV_ATR_JobExclusiveOnUse].at_flags=0;
+@@ -950,8 +954,8 @@ START_TEST(place_subnodes_in_hostlist_job_exclusive_test)
+ 
+   job_reservation_info jri3;
+   rc = place_subnodes_in_hostlist(&pjob, pnode, *naji, jri3, buf);
+-  fail_unless((rc == PBSE_NONE), "3rd call to place_subnodes_in_hostlit failed");
+-  fail_unless(pnode->nd_state != INUSE_JOB, "3rd call to place_subnodes_in_hostlit was not set to job exclusive state");
++  fail_unless((rc == PBSE_NONE), "3rd call to place_subnodes_in_hostlist failed");
++  fail_unless(pnode->nd_state != INUSE_JOB, "3rd call to place_subnodes_in_hostlist was not set to job exclusive state");
+   }
+ END_TEST
+ 
+@@ -959,10 +963,11 @@ START_TEST(test_process_gpu_token)
+   {
+   job *pjob;
+   char *s;
++  char *r;
+   struct pbsnode *pnode;
+ 
+   pjob = (job *)calloc(1, sizeof(job));
+-  s = strdup("gpunode/5");
++  s = strdup("gpunode/7");
+ 
+   fail_unless(process_gpu_token(NULL, pjob) != PBSE_NONE);
+   fail_unless(process_gpu_token(s, NULL) != PBSE_NONE);
+@@ -973,9 +978,31 @@ START_TEST(test_process_gpu_token)
+ 
+   fail_unless((pnode = find_nodebyname("gpunode")) != NULL);
+ 
+-  fail_unless(pnode->nd_gpusn[5].job_internal_id == 10);
++  fail_unless(pnode->nd_gpusn[7].job_internal_id == 10);
++  fail_unless(pnode->nd_gpusn[7].inuse == true);
++  fail_unless(pnode->nd_gpusn[7].job_count == 1);
++
++  // clear
++  pnode->nd_gpusn[7].inuse= false;
++  pnode->nd_gpusn[7].job_count = 0;
++
++  s = strdup("gpunode");
++  r = strdup("4-6");
++  fail_unless(process_gpu_token_slotrange(s, r, pjob) == PBSE_NONE);
++  fail_unless(pnode->nd_gpusn[4].inuse == true);
++  fail_unless(pnode->nd_gpusn[4].job_count == 1);
+   fail_unless(pnode->nd_gpusn[5].inuse == true);
+   fail_unless(pnode->nd_gpusn[5].job_count == 1);
++  fail_unless(pnode->nd_gpusn[6].inuse == true);
++  fail_unless(pnode->nd_gpusn[6].job_count == 1);
++
++  // clear
++  pnode->nd_gpusn[4].inuse= false;
++  pnode->nd_gpusn[4].job_count = 0;
++  pnode->nd_gpusn[5].inuse= false;
++  pnode->nd_gpusn[5].job_count = 0;
++  pnode->nd_gpusn[6].inuse= false;
++  pnode->nd_gpusn[6].job_count = 0;
+ 
+   s = strdup("gpunode/0-2");
+   fail_unless(process_gpu_token(s, pjob) == PBSE_NONE);
+@@ -985,9 +1012,91 @@ START_TEST(test_process_gpu_token)
+   fail_unless(pnode->nd_gpusn[1].job_count == 1);
+   fail_unless(pnode->nd_gpusn[2].inuse == true);
+   fail_unless(pnode->nd_gpusn[2].job_count == 1);
++
++  // clear
++  pnode->nd_gpusn[0].inuse= false;
++  pnode->nd_gpusn[0].job_count = 0;
++  pnode->nd_gpusn[1].inuse= false;
++  pnode->nd_gpusn[1].job_count = 0;
++  pnode->nd_gpusn[2].inuse= false;
++  pnode->nd_gpusn[2].job_count = 0;
++
++  s = strdup("gpunode/0-2,3,7");
++  fail_unless(process_gpu_token(s, pjob) == PBSE_NONE);
++  fail_unless(pnode->nd_gpusn[0].inuse == true);
++  fail_unless(pnode->nd_gpusn[0].job_count == 1);
++  fail_unless(pnode->nd_gpusn[1].inuse == true);
++  fail_unless(pnode->nd_gpusn[1].job_count == 1);
++  fail_unless(pnode->nd_gpusn[2].inuse == true);
++  fail_unless(pnode->nd_gpusn[2].job_count == 1);
++  fail_unless(pnode->nd_gpusn[3].inuse == true);
++  fail_unless(pnode->nd_gpusn[3].job_count == 1);
++  fail_unless(pnode->nd_gpusn[7].inuse == true);
++  fail_unless(pnode->nd_gpusn[7].job_count == 1);
++ }
++END_TEST
++
++
++START_TEST(test_split_str_on_character)
++  {
++  std::string s;
++  std::vector<std::string> my_v;
++
++  s = "0";
++  my_v = split_str_on_character(s, ',');
++  fail_unless(my_v.size() == 1);
++  fail_unless(my_v[0] == "0");
++
++  s = "0,1,2";
++  my_v = split_str_on_character(s, ',');
++  fail_unless(my_v.size() == 3);
++  fail_unless(my_v[0] == "0");
++  fail_unless(my_v[1] == "1");
++  fail_unless(my_v[2] == "2");
++
++  s = "a:b";
++  my_v = split_str_on_character(s, ':');
++  fail_unless(my_v.size() == 2);
++  fail_unless(my_v[0] == "a");
++  fail_unless(my_v[1] == "b");
+   }
+ END_TEST
+ 
++
++START_TEST(test_set_one_old)
++  {
++  job *pjob;
++  char *s;
++  struct pbsnode *pnode;
++
++  pjob = (job *)calloc(1, sizeof(job));
++  s = strdup("jane/7");
++
++  fail_unless(set_one_old(NULL, pjob) != PBSE_NONE);
++  fail_unless(set_one_old(s, NULL) != PBSE_NONE);
++  fail_unless(set_one_old(NULL, NULL) != PBSE_NONE);
++
++  pjob->ji_internal_id = 10;
++  fail_unless(set_one_old(s, pjob) == PBSE_NONE);
++
++  fail_unless((pnode = find_nodebyname("jane")) != NULL);
++
++  fail_unless(pnode->nd_slots.get_total_execution_slots() == 8);
++  // have one used so far so 7 should be free
++  fail_unless(pnode->nd_slots.get_number_free() == 7);
++
++  s = strdup("jane/0-2,5");
++  fail_unless(set_one_old(s, pjob) == PBSE_NONE);
++  // used 4 so 3 free
++  fail_unless(pnode->nd_slots.get_number_free() == 3);
++
++  fail_unless(set_one_old_slotrange("jane", "3-4", pjob) == PBSE_NONE);
++  // used 2 so 1 free
++  fail_unless(pnode->nd_slots.get_number_free() == 1);
++ }
++END_TEST
++
++
+ Suite *node_manager_suite(void)
+   {
+   Suite *s = suite_create("node_manager_suite methods");
+@@ -1054,6 +1163,14 @@ Suite *node_manager_suite(void)
+   tcase_add_test(tc_core, test_process_gpu_token);
+   suite_add_tcase(s, tc_core);
+ 
++  tc_core = tcase_create("test_split_str_on_character");
++  tcase_add_test(tc_core, test_split_str_on_character);
++  suite_add_tcase(s, tc_core);
++
++  tc_core = tcase_create("test_set_one_old");
++  tcase_add_test(tc_core, test_set_one_old);
++  suite_add_tcase(s, tc_core);
++
+   return(s);
+   }
+ 

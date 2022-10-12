@@ -1,0 +1,28 @@
+commit 400f1d02245bb8d7f4c99aeb6b2e37479aaa9a92
+Author: David Beer <dbeer@adaptivecomputing.com>
+Date:   Wed May 10 15:02:58 2017 -0600
+
+    TRQ-4035. Memory-only nodes were causing the cgroup code to crash.
+
+diff --git a/src/lib/Libutils/numa_chip.cpp b/src/lib/Libutils/numa_chip.cpp
+index 84ccffb..2ba3f5c 100644
+--- a/src/lib/Libutils/numa_chip.cpp
++++ b/src/lib/Libutils/numa_chip.cpp
+@@ -229,12 +229,15 @@ void Chip::initialize_cores_from_strings(
+   {
+   std::vector<int> core_indices;
+   std::vector<int> thread_indices;
+-  int              ratio;
++  int              ratio = 0;
+ 
+   translate_range_string_to_vector(cores_str.c_str(), core_indices);
+   translate_range_string_to_vector(threads_str.c_str(), thread_indices);
+ 
+-  ratio = thread_indices.size() / core_indices.size();
++  // Check if this is a memory-only node
++  if (core_indices.size() > 0)
++    ratio = thread_indices.size() / core_indices.size();
++
+   unsigned int j = 0;
+ 
+   for (unsigned int i = 0; i < core_indices.size(); i++)

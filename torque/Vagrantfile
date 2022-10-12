@@ -14,7 +14,7 @@ Vagrant.configure(2) do |config|
 
   config.vm.box_download_insecure = true
 
-  config.vm.synced_folder 'puppet', '/vagrant', mount_options: ['dmode=755', 'fmode=755']
+  config.vm.synced_folder 'src', '/vagrant', mount_options: ['dmode=755', 'fmode=755']
 
   if Vagrant.has_plugin?('vagrant-hostmanager')
     config.hostmanager.manage_host = true
@@ -27,4 +27,75 @@ Vagrant.configure(2) do |config|
     abort 'Please install the hostmanager plugin with "vagrant plugin install vagrant-hostmanager"'
   end
 
+  # EL 7 XDMoD Node
+  config.vm.define "xdmod7", autostart: false do |xdmod7|
+    xdmod7.vm.box = "centos/7"
+    xdmod7.vm.provider :virtualbox do |v|
+      v.memory = 2048
+      v.cpus = 2
+    end
+    xdmod7.vm.provider :vmware_workstation do |v|
+      v.vmx['memsize'] = '2048'
+      v.vmx['numvcpus'] = '2'
+    end
+    xdmod7.vm.hostname = 'xdmod.icds.test'
+    xdmod7.vm.network :private_network, ip: '192.168.57.201'
+    xdmod7.vm.provision "ansible" do |ansible|
+      ansible.playbook = "xdmod.yml"
+    end
+  end
+
+  # EL 7 Head Node
+  config.vm.define "head7", autostart: false do |head7|
+    head7.vm.box = "centos/7"
+    head7.vm.provider :virtualbox do |v|
+      v.memory = 2048
+      v.cpus = 2
+    end
+    head7.vm.provider :vmware_workstation do |v|
+      v.vmx['memsize'] = '2048'
+      v.vmx['numvcpus'] = '2'
+    end
+    head7.vm.hostname = 'head7.icds.test'
+    head7.vm.network :private_network, ip: '192.168.57.202'
+    head7.vm.provision "ansible" do |ansible|
+      ansible.playbook = "head.yml"
+    end
+  end
+
+  # EL 7 Compute Node
+  config.vm.define "comp7", autostart: false do |comp7|
+    comp7.vm.box = "centos/7"
+    comp7.vm.provider :virtualbox do |v|
+      v.memory = 2048
+      v.cpus = 2
+    end
+    comp7.vm.provider :vmware_workstation do |v|
+      v.vmx['memsize'] = '2048'
+      v.vmx['numvcpus'] = '2'
+    end
+    comp7.vm.hostname = 'comp7.icds.test'
+    comp7.vm.network :private_network, ip: '192.168.57.214'
+    comp7.vm.provision "ansible" do |ansible|
+      ansible.playbook = "compute.yml"
+    end
+  end
+
+  # EL 7 Torque build Node
+  config.vm.define "build7", autostart: false do |build7|
+    build7.vm.box = "centos/7"
+    build7.vm.provider :virtualbox do |v|
+      v.memory = 2048
+      v.cpus = 2
+    end
+    build7.vm.provider :vmware_workstation do |v|
+      v.vmx['memsize'] = '2048'
+      v.vmx['numvcpus'] = '2'
+    end
+    build7.vm.hostname = 'build7.icds.test'
+    build7.vm.network :private_network, ip: '192.168.57.199'
+    build7.vm.provision "ansible" do |ansible|
+      ansible.playbook = "build.yml"
+    end
+  end
 end

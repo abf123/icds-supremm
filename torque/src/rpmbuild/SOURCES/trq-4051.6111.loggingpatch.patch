@@ -1,0 +1,183 @@
+diff --git a/src/lib/Libutils/machine.cpp b/src/lib/Libutils/machine.cpp
+index 0b8aa96..8156d59 100644
+--- a/src/lib/Libutils/machine.cpp
++++ b/src/lib/Libutils/machine.cpp
+@@ -595,6 +595,9 @@ void Machine::displayAsJson(
+ 
+   {
+   Json::Value node;
++
++  log_ext(-1, __func__, "processing machine", LOG_DEBUG);
++
+   for (unsigned int i = 0; i < this->sockets.size(); i++)
+     {
+     this->sockets[i].displayAsJson(node[NODE][i][SOCKET], include_jobs);
+diff --git a/src/lib/Libutils/numa_chip.cpp b/src/lib/Libutils/numa_chip.cpp
+index c9cface..9e40a48 100644
+--- a/src/lib/Libutils/numa_chip.cpp
++++ b/src/lib/Libutils/numa_chip.cpp
+@@ -968,6 +968,16 @@ void Chip::displayAsJson(
+  
+   
+   out[OS_INDEX] = this->id;
++
++  // check for empty string here and log it
++  if (core_range.empty())
++    {
++    char log_buf[LOCAL_LOG_BUF_SIZE];
++
++    snprintf(log_buf, sizeof(log_buf), "writing empty cores value for chip id %d", this->id);
++    log_ext(-1, __func__, log_buf, LOG_DEBUG);
++    }
++
+   out[CORES] = core_range;
+   out[THREADS] = thread_range;
+   
+diff --git a/src/lib/Libutils/numa_socket.cpp b/src/lib/Libutils/numa_socket.cpp
+index 4faf4ad..16a99f8 100644
+--- a/src/lib/Libutils/numa_socket.cpp
++++ b/src/lib/Libutils/numa_socket.cpp
+@@ -497,9 +497,20 @@ void Socket::displayAsJson(
+   bool          include_jobs) const
+ 
+   {
++  char log_buf[LOCAL_LOG_BUF_SIZE];
++
++  snprintf(log_buf, sizeof(log_buf), "socket %u, totalChips=%d, totalCores=%d, totalThreads=%d", this->id,
++    this->getTotalChips(),
++    this->getTotalCores(),
++    this->getTotalThreads());
++  log_ext(-1, __func__, log_buf, LOG_DEBUG);
++
+   out[OS_INDEX] = this->id;
+   for (unsigned int i = 0; i < this->chips.size(); i++)
+     {
++    snprintf(log_buf, sizeof(log_buf), "processing socket %u chip %u", this->id, i);
++    log_ext(-1, __func__, log_buf, LOG_DEBUG);
++
+     this->chips[i].displayAsJson(out[NUMA_NODES][i][NUMA_NODE], include_jobs);
+     }
+   } // END displayAsJson()
+diff --git a/src/resmom/mom_server.c b/src/resmom/mom_server.c
+index f4abc55..46c390a 100644
+--- a/src/resmom/mom_server.c
++++ b/src/resmom/mom_server.c
+@@ -1812,6 +1812,18 @@ void mom_server_all_update_stat(void)
+ #ifdef NVIDIA_GPUS
+     global_gpu_status.clear();
+     add_gpu_status(global_gpu_status);
++
++    // sanity check
++    if ((global_gpu_status.size() > 0) &&
++        (strcmp(global_gpu_status[global_gpu_status.size()-1].c_str(), END_GPU_STATUS) != 0))
++      {
++      sprintf(buf, "END_GPU_STATUS not added to gpu status (global_gpu_status.size()=%d)--not sending gpu stats",
++        global_gpu_status.size());
++      log_err(-1, __func__, buf);
++
++      // clear stats so incomplete info is not sent
++      global_gpu_status.clear();
++      }
+ #endif
+ 
+ #ifdef MIC
+@@ -1819,7 +1831,7 @@ void mom_server_all_update_stat(void)
+ #endif 
+ 
+     /* It is possible that pbs_server may get busy and start queing incoming requests and not be able 
+-       to process them right away. If pbs_mom is waiting for a reply to a statuys update that has 
++       to process them right away. If pbs_mom is waiting for a reply to a status update that has 
+        been queued and at the same time the server makes a request to the mom we can get stuck
+        in a pseudo live-lock state. That is the server is waiting for a response from the mom and
+        the mom is waiting for a response from the server. neither of which will come until a request times out.
+diff --git a/src/server/node_manager.c b/src/server/node_manager.c
+index 1f5fe5f..0bbc5e6 100644
+--- a/src/server/node_manager.c
++++ b/src/server/node_manager.c
+@@ -4047,6 +4047,11 @@ void save_node_usage(
+   path += pnode->get_name();
+   tmp_path = path + ".tmp";
+ 
++  snprintf(log_buf, sizeof(log_buf), "processing node %s", pnode->get_name());
++  log_ext(-1, __func__, log_buf, LOG_DEBUG);
++
++  // check node core info on all sockets
++
+   pnode->nd_layout.displayAsJson(node_state, true);
+ 
+   if ((f = fopen(tmp_path.c_str(), "w+")) != NULL)
+@@ -4271,6 +4276,17 @@ int place_subnodes_in_hostlist(
+       }
+ 
+     save_cpus_and_memory_cpusets(pjob, pnode->get_name(), cgi);
++
++    // log node info
++    snprintf(log_buf, sizeof(log_buf), "job %s, node %s: totalMemory=%lu, totalSockets=%d, totalChips=%d, totalCores=%d, totalThreads=%d, calling save_node_usage()",
++      pjob->ji_qs.ji_jobid, pnode->get_name(),
++      pnode->nd_layout.getTotalMemory(),
++      pnode->nd_layout.getTotalSockets(),
++      pnode->nd_layout.getTotalChips(),
++      pnode->nd_layout.getTotalCores(),
++      pnode->nd_layout.getTotalThreads());
++    log_ext(-1, __func__, log_buf, LOG_DEBUG);
++
+     save_node_usage(pnode);
+ #endif
+ 
+@@ -5623,6 +5639,17 @@ int remove_job_from_node(
+   if (pnode->nd_layout.is_initialized())
+     {
+     pnode->nd_layout.free_job_allocation(job_mapper.get_name(internal_job_id));
++
++    // log node info
++    snprintf(log_buf, sizeof(log_buf), "internal_job_id %d, node %s: totalMemory=%lu, totalSockets=%d, totalChips=%d, totalCores=%d, totalThreads=%d, calling save_node_usage()",
++      internal_job_id, pnode->get_name(),
++      pnode->nd_layout.getTotalMemory(),
++      pnode->nd_layout.getTotalSockets(),
++      pnode->nd_layout.getTotalChips(),
++      pnode->nd_layout.getTotalCores(),
++      pnode->nd_layout.getTotalThreads());
++    log_ext(-1, __func__, log_buf, LOG_DEBUG);
++
+     save_node_usage(pnode);
+     }
+ #endif
+diff --git a/src/server/pbsd_init.c b/src/server/pbsd_init.c
+index d5aec1a..7501ff1 100644
+--- a/src/server/pbsd_init.c
++++ b/src/server/pbsd_init.c
+@@ -1190,7 +1190,21 @@ void remove_invalid_allocations(
+       pnode->nd_layout.free_job_allocation(bad_allocation[i].c_str());
+ 
+     if (bad_allocation.size() > 0)
++      {
++      char log_buf[LOCAL_LOG_BUF_SIZE];
++
++      // log node info
++      snprintf(log_buf, sizeof(log_buf), "node %s: totalMemory=%lu, totalSockets=%d, totalChips=%d, totalCores=%d, totalThreads=%d, calling save_node_usage()",
++        pnode->get_name(),
++        pnode->nd_layout.getTotalMemory(),
++        pnode->nd_layout.getTotalSockets(),
++        pnode->nd_layout.getTotalChips(),
++        pnode->nd_layout.getTotalCores(),
++        pnode->nd_layout.getTotalThreads());
++      log_ext(-1, __func__, log_buf, LOG_DEBUG);
++
+       save_node_usage(pnode);
++      }
+     }
+   } // END remove_invalid_allocations()
+ 
+diff --git a/src/server/process_mom_update.c b/src/server/process_mom_update.c
+index 962df66..7ab8b90 100644
+--- a/src/server/process_mom_update.c
++++ b/src/server/process_mom_update.c
+@@ -858,7 +858,7 @@ int process_status_info(
+     }
+ 
+   /* loop over each string */
+-  for (unsigned int i = 0; i != status_info.size(); i++)
++  for (unsigned int i = 0; i < status_info.size(); i++)
+     {
+     const char *str = status_info[i].c_str();
+ 

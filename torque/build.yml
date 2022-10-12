@@ -1,0 +1,42 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install rpm-build
+      yum:
+        name:
+          - autoconf
+          - automake
+          - bison
+          - byacc
+          - cscope
+          - ctags
+          - diffstat
+          - doxygen
+          - flex
+          - gcc
+          - gcc-c++
+          - gcc-gfortran
+          - git
+          - indent
+          - intltool
+          - libtool
+          - patchutils
+          - rcs
+          - rpm-sign
+          - subversion
+          - swig
+          - systemtap
+          - rpm-build
+          - openssl-devel
+          - libxml2-devel
+          - boost-devel
+          - pam-devel
+          - xauth
+          - hwloc
+          - hwloc-devel
+        state: installed
+    - name: Install EPEL repo
+      yum:
+        name: epel-release
+        state: installed

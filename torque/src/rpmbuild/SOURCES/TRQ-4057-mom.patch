@@ -1,0 +1,22 @@
+diff --git a/src/resmom/requests.c b/src/resmom/requests.c
+index 92de85a..3fb4d6f 100644
+--- a/src/resmom/requests.c
++++ b/src/resmom/requests.c
+@@ -4400,7 +4400,7 @@ batch_request *get_std_file_info(
+   preq = initialize_stageout_request(pjob);
+   struct rq_cpyfile *pcf = &preq->rq_ind.rq_cpyfile;
+     
+-  if (copy_stdout)
++  if (copy_stdout && (pjob->ji_wattr[JOB_ATR_outpath].at_val.at_str != NULL))
+     {
+     struct rqfpair *pair = (struct rqfpair *)calloc(1, sizeof(struct rqfpair));
+     std::string local(pjob->ji_qs.ji_fileprefix);
+@@ -4414,7 +4414,7 @@ batch_request *get_std_file_info(
+     append_link(&pcf->rq_pair, &pair->fp_link, pair);
+     }
+ 
+-  if (copy_stderr)
++  if (copy_stderr && (pjob->ji_wattr[JOB_ATR_errpath].at_val.at_str != NULL))
+     {
+     struct rqfpair *pair = (struct rqfpair *)calloc(1, sizeof(struct rqfpair));
+     std::string local(pjob->ji_qs.ji_fileprefix);

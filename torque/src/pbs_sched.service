@@ -1,0 +1,39 @@
+[Unit]
+Description=TORQUE pbs_sched daemon
+Requires=network.target local-fs.target
+Wants=rsyslog.target
+After=trqauthd.service network.target local-fs.target
+
+[Service]
+Type=forking
+User=root
+LimitCORE=infinity
+Restart=on-failure
+RestartSec=1
+
+# Let systemd guess the pid.
+#
+# PIDFile should not be set to PBS_HOME/sched_priv/server.lock
+# since it holds the pid of pbs_sched on the active server (not the necessarily
+# the local one) in an HA configuration.
+GuessMainPID=yes
+#PIDFile=$PBS_HOME/sched_priv/sched.lock
+
+Environment=PBS_HOME=/var/spool/torque
+Environment=PBS_ARGS=
+EnvironmentFile=-/etc/sysconfig/pbs_server
+
+ExecStart=/usr/local/sbin/pbs_sched -d $PBS_HOME
+
+# Define kill parameters for shutdown.
+#
+# The server should be shutdown with a SIGTERM rather than using qterm
+# (which will shutdown the active server in an HA configuration).
+#KillMode=control-group
+KillMode=process
+KillSignal=SIGTERM
+TimeoutStopSec=30
+SuccessExitStatus=1 SIGTERM
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,138 @@
+diff --git a/src/include/machine.hpp b/src/include/machine.hpp
+index dfae001..845f7d5 100644
+--- a/src/include/machine.hpp
++++ b/src/include/machine.hpp
+@@ -358,7 +358,7 @@ class Machine
+     void displayAsString(stringstream &out) const;
+     void displayAsJson(stringstream &out, bool include_jobs) const;
+     void insertNvidiaDevice(PCI_Device& device);
+-    void store_device_on_appropriate_chip(PCI_Device &device);
++    void store_device_on_appropriate_chip(PCI_Device &device, bool no_info);
+     void place_all_execution_slots(req &r, allocation &master, const char *hostname);
+     int  spread_place(req &r, allocation &master, int tasks_for_node, const char *hostname);
+     int  spread_place_pu(req &r, allocation &master, int tasks_for_node, const char *hostname);
+diff --git a/src/lib/Libutils/machine.cpp b/src/lib/Libutils/machine.cpp
+index 0b7f86d..0e191f6 100644
+--- a/src/lib/Libutils/machine.cpp
++++ b/src/lib/Libutils/machine.cpp
+@@ -1304,10 +1304,12 @@ void Machine::free_job_allocation(
+ 
+ void Machine::store_device_on_appropriate_chip(
+     
+-  PCI_Device &device)
++  PCI_Device &device,
++  bool        no_info)
+ 
+   {
+-  if (this->isNUMA == false)
++  if ((this->isNUMA == false) ||
++      (no_info == true))
+     {
+     this->sockets[0].store_pci_device_appropriately(device, true);
+     }
+diff --git a/src/lib/Libutils/numa_pci_device.cpp b/src/lib/Libutils/numa_pci_device.cpp
+index 76e0e2e..bf8dcdd 100644
+--- a/src/lib/Libutils/numa_pci_device.cpp
++++ b/src/lib/Libutils/numa_pci_device.cpp
+@@ -68,13 +68,20 @@ PCI_Device::~PCI_Device()
+ 
+ int PCI_Device::initializePCIDevice(hwloc_obj_t device_obj, int idx, hwloc_topology_t topology)
+   {
+-
+-  id = device_obj->logical_index;
+-  name = device_obj->name;
+-  if (device_obj->infos != NULL)
++  if (device_obj != NULL)
++    {
++    id = device_obj->logical_index;
++    name = device_obj->name;
++    if (device_obj->infos != NULL)
++      {
++      info_name = device_obj->infos->name;
++      info_value = device_obj->infos->value;
++      }
++    }
++  else
+     {
+-    info_name = device_obj->infos->name;
+-    info_value = device_obj->infos->value;
++    id = idx;
++    name = "Unknown";
+     }
+ 
+ 
+diff --git a/src/resmom/accelerators_numa.cpp b/src/resmom/accelerators_numa.cpp
+index ddf9230..b21d850 100644
+--- a/src/resmom/accelerators_numa.cpp
++++ b/src/resmom/accelerators_numa.cpp
+@@ -86,7 +86,11 @@ hwloc_obj_t Machine::get_non_nvml_device(
+ 
+ 
+ 
+-int Machine::initializeNVIDIADevices(hwloc_obj_t machine_obj, hwloc_topology_t topology)
++int Machine::initializeNVIDIADevices(
++    
++  hwloc_obj_t machine_obj,
++  hwloc_topology_t topology)
++
+   {
+   nvmlReturn_t rc;
+ 
+@@ -103,8 +107,9 @@ int Machine::initializeNVIDIADevices(hwloc_obj_t machine_obj, hwloc_topology_t t
+     return(PBSE_NONE);
+     }
+ 
+-  unsigned int device_count = 0;
+-  unsigned int found_devices = 0;
++  std::vector<unsigned int> unfound_ids;
++  unsigned int              device_count = 0;
++  unsigned int              found_devices = 0;
+ 
+   /* Get the device count. */
+   rc = nvmlDeviceGetCount(&device_count);
+@@ -136,7 +141,10 @@ int Machine::initializeNVIDIADevices(hwloc_obj_t machine_obj, hwloc_topology_t t
+         // including k80s.
+         gpu_obj = this->get_non_nvml_device(topology, gpu, identified);
+         if (gpu_obj == NULL)
++          {
++          unfound_ids.push_back(idx);
+           continue;
++          }
+         }
+ 
+       identified.insert(gpu_obj);
+@@ -153,14 +161,14 @@ int Machine::initializeNVIDIADevices(hwloc_obj_t machine_obj, hwloc_topology_t t
+   
+         new_device.initializePCIDevice(gpu_obj, idx, topology);
+ 
+-        store_device_on_appropriate_chip(new_device);
++        store_device_on_appropriate_chip(new_device, false);
+ 
+         // hwloc sees the K80 as a single device. We want to display two to stay in sync
+         // with NVML, so store an extra for each K80
+         if (!strncmp(buf, "Tesla K80", 9))
+           {
+           new_device.setId(new_device.get_id() + 1);
+-          store_device_on_appropriate_chip(new_device);
++          store_device_on_appropriate_chip(new_device, false);
+           found_devices++;
+           idx++;
+           }
+@@ -169,9 +177,16 @@ int Machine::initializeNVIDIADevices(hwloc_obj_t machine_obj, hwloc_topology_t t
+ 
+     if (found_devices != device_count)
+       {
+-      sprintf(log_buffer, "NVML reports %u devices, but we only found %u",
++      sprintf(log_buffer, "NVML reports %u devices, but we only found %u. Placement will be approximated.",
+         device_count, found_devices);
+       log_err(-1, __func__, log_buffer);
++
++      for (size_t i = 0; i < unfound_devices.size(); i++)
++        {
++        PCI_Device new_device;
++        new_device.initializePCIDevice(NULL, unfound_devices[i], topology);
++        store_device_on_appropriate_chip(new_device, true);
++        }
+       }
+     }
+   else

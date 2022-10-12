@@ -1,0 +1,71 @@
+---
+- hosts: all
+  become: yes
+  vars:
+    torque_rpms:
+      - moab-torque-common-6.1.2-7aci.el7.x86_64.rpm
+      - moab-torque-client-6.1.2-7aci.el7.x86_64.rpm
+      - moab-torque-mom-6.1.2-7aci.el7.x86_64.rpm
+    rpm_target_dir: /tmp/
+    rpm_source_dir: src/rpmbuild/RPMS/x86_64
+    torque_home: /var/spool/torque
+  tasks:
+    - name: Install EPEL repo
+      yum:
+        name: epel-release
+        state: installed
+    - name: Copy Torque RPMs
+      copy:
+        src: "{{ rpm_source_dir }}/{{ item }}"
+        dest: "{{ rpm_target_dir }}"
+      loop: "{{ torque_rpms }}"
+    - name: Install Torque Server and Clients
+      yum:
+        name: "{{ [rpm_target_dir] | product(torque_rpms) | map('join') | list }}"
+        state: installed
+    - name: Set PBS server name
+      copy:
+        src: src/server_name
+        dest: "{{ torque_home }}/server_name"
+        owner: root
+        group: root
+        mode: '0644'
+    - name: Enable trqauthd service
+      systemd:
+        name: trqauthd
+        state: started
+        enabled: true
+    - name: Enable pbs_mom service
+      systemd:
+        name: pbs_mom
+        state: started
+        enabled: true
+    - name: Install PCP data collection packages
+      yum:
+        name:
+          - pcp
+          - pcp-manager
+          - pcp-conf
+          - pcp-libs
+          - python-pcp
+          - perl-PCP-PMDA
+          - pcp-system-tools
+          - pcp-pmda-gpfs
+          - pcp-pmda-lustre
+          - pcp-pmda-infiniband
+          - pcp-pmda-mic
+          - pcp-pmda-nvidia-gpu
+          - pcp-pmda-nfsclient
+          - pcp-pmda-perfevent
+          - pcp-pmda-json
+        state: installed
+# systemctl enable pmcd pmlogger
+# systemctl start pmcd pmlogger
+    - name: Enable PCP services
+      systemd:
+        name: "{{ item }}"
+        state: started
+        enabled: true
+      loop:
+        - pmcd
+        - pmlogger
