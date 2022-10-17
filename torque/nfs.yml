@@ -1,0 +1,42 @@
+---
+- hosts: all
+  become: yes
+  tasks:
+    - name: Install nfs-utils
+      yum:
+        name: nfs-utils
+        state: installed
+    - name: Create shared directory
+      file:
+        path: /tmp/share
+        state: directory
+        owner: root
+        group: root
+        mode: '0775'
+    - name: Create exports file
+      template:
+        src: src/exports.j2
+        dest: /etc/exports
+        owner: root
+        group: root
+        mode: '0644'
+      notify:
+        - Reload NFS
+        - Export All
+    - name: Enable NFS services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      with_items:
+        - rpcbind
+        - nfslock
+        - nfs
+
+  handlers:
+    - name: Reload NFS
+      systemd:
+        name: nfs
+        state: restarted
+    - name: Export All
+      shell: exportfs -a
