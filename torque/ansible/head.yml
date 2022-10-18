@@ -7,7 +7,7 @@
       - moab-torque-client-6.1.2-7aci.el7.x86_64.rpm
       - moab-torque-server-6.1.2-7aci.el7.x86_64.rpm
     rpm_target_dir: /tmp/
-    rpm_source_dir: src/rpmbuild/RPMS/x86_64
+    rpm_source_dir: ../src/rpmbuild/RPMS/x86_64
     torque_home: /var/spool/torque
   tasks:
     - name: Install EPEL repo
@@ -27,7 +27,7 @@
       #loop: "{{ torque_rpms }}"
     - name: Set PBS server name
       copy:
-        src: src/server_name
+        src: files/server_name
         dest: "{{ torque_home }}/server_name"
         owner: root
         group: root
@@ -57,7 +57,7 @@
         mode: '0755'
     - name: Place systemd service file for pbs_sched
       copy:
-        src: src/pbs_sched.service
+        src: files/pbs_sched.service
         dest: /usr/lib/systemd/system/pbs_sched.service
         owner: root
         group: root
@@ -68,3 +68,4 @@
         state: started
         enabled: true
         daemon_reload: true
+    - include: nfs_client.yml

@@ -7,7 +7,7 @@
       - moab-torque-client-6.1.2-7aci.el7.x86_64.rpm
       - moab-torque-mom-6.1.2-7aci.el7.x86_64.rpm
     rpm_target_dir: /tmp/
-    rpm_source_dir: src/rpmbuild/RPMS/x86_64
+    rpm_source_dir: ../src/rpmbuild/RPMS/x86_64
     torque_home: /var/spool/torque
   tasks:
     - name: Install EPEL repo
@@ -25,14 +25,14 @@
         state: installed
     - name: Set PBS server name
       copy:
-        src: src/server_name
+        src: files/server_name
         dest: "{{ torque_home }}/server_name"
         owner: root
         group: root
         mode: '0644'
     - name: Place pbs_mom config
       copy:
-        src: src/pbs_mom.config
+        src: files/pbs_mom.config
         dest: "{{ torque_home }}/mom_priv/config"
         owner: root
         group: root
@@ -76,3 +76,4 @@
       loop:
         - pmcd
         - pmlogger
+    - include: nfs_client.yml
