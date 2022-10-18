@@ -8,7 +8,7 @@
         state: installed
     - name: Create shared directory
       file:
-        path: /tmp/share
+        path: /var/spool/pcp
         state: directory
         owner: root
         group: root
