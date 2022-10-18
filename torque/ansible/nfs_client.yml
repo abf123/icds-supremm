@@ -1,0 +1,11 @@
+- name: Install NFS
+  yum:
+    name: nfs-utils
+    state: installed
+- name: Mount NFS share
+  mount:
+    src: 192.168.57.200:/var/spool/pcp
+    path: /mnt
+    opts: rw,sync,hard
+    state: mounted
+    fstype: nfs
